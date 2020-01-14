@@ -1,0 +1,132 @@
+#!/usr/bin/python
+# -*- encoding: utf-8; py-indent-offset: 4 -*-
+#
+#################################################################
+# Description: Checks the status of the FortiADC VirtualServers #
+#################################################################
+
+# .1.3.6.1.4.1.12356.112.8.1.3.1.1.1 = INTEGER: 1
+# .1.3.6.1.4.1.12356.112.8.1.3.1.1.2 = INTEGER: 2
+# .1.3.6.1.4.1.12356.112.8.1.3.1.1.3 = INTEGER: 3
+# .1.3.6.1.4.1.12356.112.8.1.3.1.1.4 = INTEGER: 4
+# .1.3.6.1.4.1.12356.112.8.1.3.1.2.1 = STRING: "test_pool"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.2.2 = STRING: "test_pool"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.2.3 = STRING: "test_sni1"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.2.4 = STRING: "test_sni2"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.3.1 = STRING: "Enable"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.3.2 = STRING: "Disable"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.3.3 = STRING: "Enable"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.3.4 = STRING: "Enable"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.4.1 = STRING: "Unhealthy"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.4.2 = STRING: "Healthy"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.4.3 = STRING: "Healthy"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.4.4 = STRING: "Healthy"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.5.1 = STRING: "root"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.5.2 = STRING: "root"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.5.3 = STRING: "root"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.5.4 = STRING: "root"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.6.1 = STRING: "dmztest"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.6.2 = STRING: "rs-10.1.1.1_test"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.6.3 = STRING: "dmztest"
+# .1.3.6.1.4.1.12356.112.8.1.3.1.6.4 = STRING: "dmztest"
+
+
+def inventory_fortiadc_realsrv(info):
+    yield pool[0], None
+        
+
+def check_fortinet_realsrv(item, _no_params, info):
+    pools = {}
+    for pool, status, health, rsname in info:
+        if pool == item:
+            if pool not in pools:
+                pools[pool] = []
+            if len(pools[pool]) == 0:
+                pools[pool].append({ 'rsname' : rsname,
+                                    'status' : status.upper(),
+                                    'health' : health.upper()})
+            else:
+                present = False
+                for rs in pools[pool]:
+                    if rs['rsname'] == rsname:
+                        present = True
+                        break
+                if not present:
+                    pools[pool].append({ 'rsname' : rsname,
+                                    'status' : status.upper(),
+                                    'health' : health.upper()})
+    
+    i = 0
+    rspstatus = -1
+    poolavail = 0
+    output = ""
+    for pool in pools:
+        if pool == item:
+            for pool in pools[pool]:                    
+                if pool['health'] == "HEALTHY" and pool['status'] == "ENABLE":
+                    srvavail = True
+                    healthtxt = pool['health']
+                    if rspstatus < 1:
+                        rspstatus = 0
+                    elif rspstatus == 2:
+                        rspstatus = 1
+                elif pool['health'] == "NO_HEALTH_CHECK":
+                    srvavail = True
+                    healthtxt = pool['health'] + "(!)"
+                    if rspstatus < 1:
+                        rspstatus = 0
+                    elif rspstatus == 2:
+                        rspstatus = 1
+                elif pool['status'] == "DISABLE" or pool['status'] == "MAINTAINED":
+                    srvavail = False
+                    healthtxt = pool['status'] + "(!)"
+                    if rspstatus < 0:
+                        rspstatus = 1 
+                elif pool['health'] == "UNHEALTHY":
+                    srvavail = False
+                    healthtxt = pool['health'] + "(!!)"
+                    if rspstatus < 0:
+                        rspstatus = 2
+                    elif rspstatus == 0:
+                        rspstatus = 1
+
+                if pool["status"] == "ENABLE":
+                    statustxt = pool["status"]
+                else:
+                    statustxt = pool["status"] + "(!)"
+                    srvavail = False
+
+                if srvavail:
+                    poolavail += 1
+                
+                if i == 0:
+                    output = "[" + pool['rsname'] + "] status: " + statustxt + "; health: " + healthtxt
+                    i += 1
+                else:
+                    output += " - " + "[" + pool['rsname'] + "] status: " + statustxt + "; health: " + healthtxt
+                    
+                
+    if rspstatus == 0 and poolavail > 0:
+        return 0, output
+    elif rspstatus == 1 and poolavail > 0:
+        return 1, output
+    elif poolavail == 0:
+        return 2, output
+    else:
+        return 3, "state not implemented."
+
+        
+check_info["fortiadc_realsrv"] = {
+    "inventory_function"    : inventory_fortiadc_realsrv,
+    "check_function"        : check_fortinet_realsrv,
+    "service_description"   : "RealServerPool %s",
+    "has_perfdata"          : False,
+    # uses mib FORTINET-MIB-280
+    "snmp_scan_function"    : lambda oid: ".1.3.6.1.4.1.12356.112.100.30" in oid(".1.3.6.1.2.1.1.2.0"),
+    "snmp_info"             : ( ".1.3.6.1.4.1.12356.112.8.1.3.1", [
+                                    "2", # RSPoolName
+                                    "3", # RSStatus
+                                    "4", # RSHealth
+                                    "6", # RSName
+                              ])
+}
