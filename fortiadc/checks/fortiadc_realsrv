@@ -32,7 +32,8 @@
 
 
 def inventory_fortiadc_realsrv(info):
-    yield pool[0], None
+    for pool in info:
+        yield pool[0], None
         
 
 def check_fortinet_realsrv(item, _no_params, info):
