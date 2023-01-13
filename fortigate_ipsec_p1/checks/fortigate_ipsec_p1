@@ -5,32 +5,40 @@
 # and groups its phase 2 in it.
 
 def inventory_fortigate_ipsec_ph1(info):
-    for ph1 in info:
-        yield ph1[0], None
+    vdoms = dict(info[0])
+    for ph1 in info[1]:
+        vdom = vdoms[ph1[3]]
+        if len(vdoms) > 1:
+            name = vdom + " " + ph1[0] 
+        else:
+            name = ph1[0]
+        yield name, None
 
 
 def check_fortigate_ipsec_ph1(item, params, info):
     p1s = {}
-    for p1, p2, status in info:
-        if p1 == item:
-            if p1 not in p1s:
-                p1s[p1] = []
-            if len(p1s[p1]) == 0:
-                p1s[p1].append({'p2name' : p2,
-                                'status' : status})
+    vdoms = dict(info[0])
+    for p1, p2, status, vdom_idx in info[1]:
+        status = int(status)
+        if len(vdoms) > 1:
+            name = vdoms[vdom_idx] + " " + p1
+        else:
+            name = p1
+        if name == item:
+            for ph2 in p1s.setdefault(name, []):
+                if ph2['p2name'] == p2:
+                    ph2['status'] = max(ph2['status'], status)
+                    break
             else:
-                present = False
-                for ph2 in p1s[p1]:
-                    if ph2['p2name'] == p2:
-                        present = True
-                        break
-                if not present:
-                    p1s[p1].append({'p2name' : p2,
-                                    'status' : status})
+                p1s[name].append({'p2name' : p2,
+                                'status' : status})
                                    
     tunnels_down    = []
+    if item not in p1s:
+        return
+
     for i in p1s[item]:
-        if i['status'] == "1":
+        if i['status'] == 1:
             tunnels_down.append(i['p2name'])
 
     num_total        = len(p1s[item])
@@ -60,11 +68,12 @@ check_info["fortigate_ipsec_ph1"] = {
     "service_description"       : "VPN IPSec Tunnel %s",
     "has_perfdata"              : True,
     "snmp_scan_function"        : lambda oid: ".1.3.6.1.4.1.12356.101.1" in oid(".1.3.6.1.2.1.1.2.0"),
-    "snmp_info"                 : (".1.3.6.1.4.1.12356.101.12.2.2.1", [
+    "snmp_info"                 : [(".1.3.6.1.4.1.12356.101.3.2.1.1", [1, 2]), (".1.3.6.1.4.1.12356.101.12.2.2.1", [
                                     2,  # fgVpnTunEntPhase1Name
                                     3,  # fgVpnTunEntPhase2Name
                                     20, # fgVpnTunEntStatus
-                                  ]),
+                                    21, # fgVpnTunEntVdom
+                                  ])],
     #"group"                     : "ipsecvpn",
 }
 
